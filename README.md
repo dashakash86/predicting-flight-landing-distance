@@ -7,8 +7,12 @@ Also, a predictive model (using Linear Regression) was built to predict landing 
 ## Tools Used: 
 SAS
 
+## Datasets used
+FAA1.csv and FAA2.csv datasets uploaded in this repository.
+
+
 ## Variables analyzed
-** Aircraft: The make of an aircraft (Boeing or Airbus).
+* Aircraft: The make of an aircraft (Boeing or Airbus).
 Duration (in minutes): Flight duration between taking off and landing. The duration of a normal flight should always be greater than 40min.
 No_pasg: The number of passengers in a flight.
 Speed_ground (in miles per hour): The ground speed of an aircraft when passing over the threshold of the runway. If its value is less than 30MPH or greater than 140MPH, then the landing would be considered as abnormal.

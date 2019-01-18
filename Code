@@ -1,1 +1,302 @@
 
+/*Importing and reading the FAA1 and FAA2 files into SAS*/
+PROC IMPORT OUT=FAA1 DATAFILE= "/folders/myfolders/GASUE34_data/FAA1.xls" 
+            DBMS=XLS REPLACE;
+     SHEET="FAA1"; 
+     GETNAMES=YES;
+RUN;
+
+PROC IMPORT OUT=FAA2 DATAFILE= "/folders/myfolders/GASUE34_data/FAA2.xls" 
+            DBMS=XLS REPLACE;
+     SHEET="FAA2"; 
+     GETNAMES=YES;
+RUN;
+
+
+/*Now, some high-level data validity and completeness check through univariate*/
+proc univariate data=FAA1;
+ var Duration No_pasg Speed_ground Speed_air Height Pitch Distance;
+ title name = 'FAA1_univ';
+run;
+
+proc univariate data=FAA2;
+ var No_pasg Speed_ground Speed_air Height Pitch Distance;
+ title name = 'FAA2_univ';
+run;
+
+/*OBSERVATIONS from univariate*/
+/*Mean and median are very close for almost all variables, which means skew is not high*/
+/*There are missing values for variables many of the variables in each dataset*/
+/*From the min and max, we know there are abnormal values present in variables Duration, Speed_ground, Speed_air, and Height*/
+
+
+/*Concatenate the datasets*/
+data FAA;
+	set FAA1 FAA2;
+	title name = 'FAA';
+	run;
+
+
+/*Now, a thorough validity and completeness check on the datasets*/
+proc univariate data=FAA;
+ var Duration No_pasg Speed_ground Speed_air Height Pitch Distance;
+run;
+/*From the univariate procedure, we now have an idea on desc stats and percentage of missing values for variables */
+
+
+/*Now we find the abnormal values in FAA and delete the abnormal observations to clean up our dataset*/
+data FAA_clean1;
+	set FAA;
+	title name = 'FAA_clean1';
+	if duration < 40 and duration ^= . then abn = 1;
+	else if speed_ground < 30 and speed_ground ^= . then abn = 1;
+	else if speed_ground > 140 and speed_ground ^= . then abn = 1;
+	else if speed_air < 30 and speed_air ^= . then abn = 1;
+	else if speed_air > 140 and speed_air ^= . then abn = 1;
+	else if height < 6 and height ^= . then abn = 1;
+	else if distance > 6000 and distance ^= . then abn = 1;
+	else abn = 0; 
+run;
+
+data FAA_clean2;
+	set FAA_clean1;
+	title name = 'FAA_clean2';
+	if abn = 1 then delete;
+	run;
+/*this dataset FAA_clean2 is the dataset after removing the abnormal observations*/
+
+
+
+/*Let us do a validity check and completeness check on this dataset*/
+proc univariate data=FAA_clean2;
+var Duration No_pasg Speed_ground Speed_air Height Pitch Distance;
+run;
+
+/*Remove duplicates in the larger dataset FAA_clean2*/
+data FAA_clean3;
+	set FAA_clean2;
+run;
+proc sort data=FAA_clean3;
+  by descending speed_ground;
+run;
+
+proc sort data=FAA_clean3 NODUPKEY;
+by speed_ground;
+run;
+
+proc univariate data=FAA_clean3;
+run;
+proc print data=FAA_clean3;
+run;
+/*no of observations left after deleting duplicates is 833*/
+
+
+
+
+/*CHAPTER - 2 - DATA VISUALIZATIONS on FAA Dataset*/
+
+proc chart data=FAA_clean3;
+vbar Duration No_pasg Speed_ground Speed_air Height Pitch Distance;
+run;
+
+/*Through freq plots of each individual variable we wanted to see the distributions
+1. Almost all variables still have a normal distribution
+2. But a few variables have skewed distribution probably because of missing values from the second
+dataset*/
+
+
+/*X-Y plots between the response variable and every predictor variable*/
+proc plot data=FAA_clean3;
+	plot Distance * Duration;
+	plot Distance * No_pasg;
+	plot Distance * Speed_ground;
+	plot Distance * Speed_air;
+	plot Distance * Height;
+	plot Distance * Pitch;
+	plot Distance * Aircraft;
+run;
+
+
+/*These X-Y plots indicate -
+1. A strong correlation/association between Landing Distance and Ground and Air speeds. 
+2. There is no specific +ve or -ve pattern in the other X-Y plots but there definitely contributions to response variable from other 
+predictors*/
+
+
+/*X-Y plots among predictor variables...selected few */
+proc plot data=FAA_clean3;
+	plot No_pasg * Duration;
+	plot Height * Speed_ground;
+	plot Speed_ground * Speed_air;
+	plot Pitch * Height;
+	plot Speed_ground * Pitch;
+run;
+/*Some correlations exist between predictors but the strongest +ve linear relationship is between Speed_ground and Speed_air*/
+
+
+
+/*Modeling*/
+/*Actual Correlation Calculation between variables*/
+proc corr data=FAA_clean3;
+ var Distance Duration No_pasg Speed_ground Speed_air Height Pitch;
+ title Correlation Coefficients;
+run;
+
+/*From the pearson correlation matrix we observe the following - 
+1. The statistically significant(based on p-value of 0.0001) and strong +ve correlations 
+are the following:
+a. Landing distance * Ground speed - 86%
+b. Landing distance * Air speed - 94%
+c. Ground speed * Air speed - 98% */
+
+
+/*Regression Model*/
+proc reg data=FAA_clean3;
+ model Distance=Duration No_pasg Speed_ground Speed_air Height Pitch / r;
+ title Regression Model;
+ run;
+
+/*From the Regression output we observe the following - 
+ 1. SAS used only 195 observations out of 833 to build the model. 
+ Majority of observations were left out because of one or more missing values. My guess is statistically the model 
+ would have been more robust had SAS used more observation in model building
+ 2. The model is 
+ Distance = -6249.84 + 0.022*Duration - 3.34*No_pasg - 2.27*Speed_ground + 82.9*Speed_air
+ + 12.65*Height + 123.73*Pitch
+ */
+ 
+ 
+/*Model Checking*/
+proc reg data=FAA_clean3;
+ model Distance=Duration No_pasg Speed_ground Speed_air Height Pitch / r;
+ output out=diagnostics r=residual;
+ run;
+ 
+/*Checking Residual Plots*/
+proc plot data=diagnostics;
+ plot Residual*Duration; 
+ plot Residual*No_pasg; 
+ plot Residual*Speed_ground; 
+ plot Residual*Speed_air; 
+ plot Residual*Height;
+ plot Residual*Pitch; 
+run;
+/*The X-Y plot of residuals against each predictor variable shows that -
+residuals are almost equally distributed on both sides of the mean(0).
+And, also the variance appears to be constant.*/
+
+
+proc means data=diagnostics t prt;
+var Residual;
+run;
+/*The one sample t-test shows that Ho is true that is the mean of residuals distribution is zero*/
+ 
+ 
+/*Checking normal distribution for residuals*/
+proc chart data=diagnostics;
+ vbar Residual;
+run;
+/*checking the histogram of the residuals, we see it appears bi-modal. 
+This could be because initial data collection was from two different sources*/
+
+
+proc univariate data=diagnostics;
+var Residual;
+histogram;
+run;
+/*From SAS output we see that 
+ a. p-value for t-test is very high, which means we can't reject the null hypothesis here (Ho: Residuals are normally distributed).
+ b. Now we can go ahead and interpret the model.
+*/
+
+
+/*Model interpretation*/
+/*
+1. The p-value for the F-test is significant. So we conclude the model as a whole is 
+statistically significant
+2. Checking the p-values for each predictor variable we see that the ones staistically
+significant are -  Speed-air, and Height
+3. R-squared is 91.73, which means the model explains 91.73% of variability in Landing Distance.
+4. So, we now go ahead and remodel. This time keeping out the predictors not statistically significant.
+*/
+
+/*Remodeling*/
+proc reg data=FAA_clean3;
+ model Distance= Speed_air Height / r;
+ output out=diagnostics_new r=residual;
+ run;
+
+
+/*Model Rechecking*/
+ 
+/*Checking Residual Plots*/
+proc plot data=diagnostics_new;
+  plot Residual*Speed_air; 
+ plot Residual*Height;
+run;
+/*The X-Y plot of residuals against each predictor variable shows that -
+residuals are almost equally distributed on both sides of the mean(0).
+And, also the variance appears to be constant.*/
+
+
+proc means data=diagnostics_new t prt;
+var Residual;
+run;
+/*The one sample t-test shows that Ho is true that is the mean of residuals distribution is zero*/
+ 
+
+
+/*Checking normal distribution for residuals*/
+proc chart data=diagnostics_new;
+ vbar Residual;
+run;
+/*checking the histogram of the residuals, we see it appears slightly bi-modal. 
+This could be because initial data collection was from two different sources*/
+
+
+
+proc univariate data=diagnostics_new;
+  var Residual;
+  histogram;
+run;
+/*From SAS output we see that 
+ a. p-value for t-test is very high, which means we can't reject the null hypothesis here (Ho: Residuals are normally distributed).
+ b. Now we can go ahead and interpret the model.
+*/
+
+
+/*Model interpretation*/
+/*
+1. The p-value for the F-test is significant. So we conclude the model as a whole is 
+statistically significant
+2. Checking the p-values for predictor variables Height and Air Speed we see that they are statistically
+significant.
+3. R-squared is 90.81, which means the model explains 90.81% of variability in Landing Distance. R-squared has
+come down a little bit as we removed insignificant variables, which means we lost information. But this model 
+is a lot simpler too.
+4. Though the intercept is also statistically significant it doesn't have much relevance because the values of 
+Air speed and Height as zeroes are out of dataset range.
+5. So our final model is 
+  Landing Distance = -5935.72 + 80.5 * Air speed + 12.5 * Height
+6. a. 1 unit of increase in Air speed will result in 80.5 units of increase in Landing Distance, 
+keeping all other variables constant.
+   b. 1 unit of increase in Height will result in 12.5 units of increase in Landing Distance, 
+keeping all other variables constant.
+*/
+
+
+/*Checking regression parameters individually for each aircraft*/ 
+proc glm data=FAA_clean3;
+  class Aircraft;
+  model Distance= Aircraft Duration No_pasg Speed_ground Speed_air Height Pitch / solution estimates;
+run;
+
+/*Findings are - 
+1. For Airbus planes, statistically significant variables to predict Landing Distance 
+tend to be - Air speed, Ground Speed, and Height.
+2. For Boeing planes, Landing distance predictors are Air speed and Height. 
+3. Sample estimate of the predictor height is more in case of Boeing than Airbus, which means 
+a unit change in height affects the landing distance more for Boeing than Airbus planes.
+4. Sample estimate for the predictor Air speed is more in case of Airbus than Boeing, which means 
+a unit change in Air speed affects landing distance more for Airbus than Boeing.  
+*/

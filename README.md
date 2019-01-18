@@ -23,4 +23,6 @@ FAA1.csv and FAA2.csv datasets uploaded in this repository.
 
 
 ## Key Insights
-
+* There is a difference in factors and how they affect landing distance for the two different types of aircrafts
+* Whereas for Airbus planes, factors affecting 'Landing Distance' the most tend to be 'Air speed', 'Ground Speed', and 'Height', for Boeing planes the variables are Air speed and Height (at a 95% confidence level).
+* In general, a unit change in 'Air speed' affected 'landing distance' 8 times more than a unit change in 'height'. 
